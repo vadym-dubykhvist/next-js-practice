@@ -38,15 +38,33 @@ const bookingSchema = new Schema<IBooking>(
 // Must be async because it awaits a DB existence check.
 bookingSchema.pre('save', async function () {
   if (this.isNew || this.isModified('eventId')) {
-    const eventExists = await mongoose
-      .model('Event')
-      .exists({ _id: this.eventId });
+    try {
+      const eventExists = await mongoose
+        .model('Event')
+        .exists({ _id: this.eventId });
 
-    if (!eventExists) {
-      throw new Error(`Referenced event does not exist: ${this.eventId}`);
+      if (!eventExists) {
+        throw new Error(`Referenced event does not exist: ${this.eventId}`);
+      }
+    } catch {
+      const validationError = new Error('Invalid events ID format or database error');
+      validationError.name = 'ValidationError';
+      throw validationError;
     }
   }
 });
+
+// Create index on eventId for faster queries
+bookingSchema.index({ eventId: 1 });
+
+// Create compound index for common queries (events bookings by date)
+bookingSchema.index({ eventId: 1, createdAt: -1 });
+
+// Create index on email for user booking lookups
+bookingSchema.index({ email: 1 });
+
+// Enforce one booking per events per email
+bookingSchema.index({ eventId: 1, email: 1 }, { unique: true, name: 'uniq_event_email' });
 
 // Guard against model re-registration during Next.js hot reloads.
 const Booking: Model<IBooking> =
