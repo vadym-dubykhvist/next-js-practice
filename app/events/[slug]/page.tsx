@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import Image from 'next/image';
 
 import { IEvent } from "@/database/event.model";
 import BookEvent from "@/components/BookEvent";
-import { getSimilarEventsBySlug } from "@/lib/actions/event.action";
+import { getSimilarEventsBySlug } from "@/lib/actions/event.actions";
 import EventCard from "@/components/EventCard";
+import { cacheLife } from "next/cache";
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL
 
@@ -34,7 +36,10 @@ const EventTags = ({ tags }: { tags: string[] }) => (
   </div>
 )
 
-const EventDetailsPage = async ({ params }: { params: Promise<{ slug: string }> }) => {
+const EventDetailsContent = async ({ params }: { params: Promise<{ slug: string }> }) => {
+  'use cache';
+
+  cacheLife("hours")
   const { slug } = await params
 
   let event: IEvent;
@@ -60,7 +65,8 @@ const EventDetailsPage = async ({ params }: { params: Promise<{ slug: string }> 
 
   const { description, image, overview, date, time, location, mode, agenda, audience, tags, organizer } = event;
 
-  const bookings = 10
+  const bookingsRes = await fetch(`${BASE_URL}/api/events/${slug}/bookings/count`)
+  const { bookings }: { bookings: number } = await bookingsRes.json()
 
   const similarEvents: IEvent[] = await getSimilarEventsBySlug(slug)
 
@@ -103,13 +109,13 @@ const EventDetailsPage = async ({ params }: { params: Promise<{ slug: string }> 
           <div className="signup-card">
             <h2>Book Your Spot</h2>
             {
-              bookings > 10 ? (
+              bookings > 0 ? (
                 <p className="text-sm">Join {bookings} people who have already booked their spot!</p>
               ) : (<p className="text-sm">
                 Be the first to book your spot!
               </p>)
             }
-            <BookEvent />
+            <BookEvent eventId={event._id.toString()} slug={event.slug} />
           </div>
         </aside>
 
@@ -119,12 +125,27 @@ const EventDetailsPage = async ({ params }: { params: Promise<{ slug: string }> 
         <h2>Similar Events</h2>
         <div className="events">
           {similarEvents.length > 0 && similarEvents.map(similarEvent => (
-            <EventCard key={similarEvent.slug} {...similarEvent} />
+            <EventCard key={similarEvent.slug}
+              title={similarEvent.title}
+              image={similarEvent.image}
+              slug={similarEvent.slug}
+              location={similarEvent.location}
+              date={similarEvent.date}
+              time={similarEvent.time}
+            />
           ))}
         </div>
       </div>
     </section>
   );
+};
+
+const EventDetailsPage = ({ params }: { params: Promise<{ slug: string }> }) => {
+  return (
+    <Suspense>
+      <EventDetailsContent params={params} />
+    </Suspense>
+  )
 };
 
 export default EventDetailsPage;
